@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2021-2022 Michael Clarke
+ * Copyright (C) 2021-2023 Michael Clarke
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -24,8 +24,8 @@ import javassist.CtClass;
 import javassist.CtConstructor;
 import javassist.CtMethod;
 import javassist.NotFoundException;
-import org.sonar.api.utils.log.Logger;
-import org.sonar.api.utils.log.Loggers;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonar.core.platform.EditionProvider;
 
 import java.io.IOException;
@@ -39,7 +39,7 @@ import java.util.Optional;
 
 public final class CommunityBranchAgent {
 
-    private static final Logger LOGGER = Loggers.get(CommunityBranchAgent.class);
+    private static final Logger LOGGER = LoggerFactory.getLogger(CommunityBranchAgent.class);
 
     private CommunityBranchAgent() {
         super();
@@ -52,9 +52,9 @@ public final class CommunityBranchAgent {
 
         if (component == Component.CE) {
             redefineEdition(instrumentation, "org.sonar.core.platform.PlatformEditionProvider", redefineOptionalEditionGetMethod());
-            redefineEdition(instrumentation, "org.sonar.server.almsettings.MultipleAlmFeature", redefineIsEnabledFlag());
+            redefineEdition(instrumentation, "org.sonar.server.almsettings.MultipleAlmFeature", redefineIsAvailableFlag());
         } else if (component == Component.WEB) {
-            redefineEdition(instrumentation, "org.sonar.server.almsettings.MultipleAlmFeature", redefineIsEnabledFlag());
+            redefineEdition(instrumentation, "org.sonar.server.almsettings.MultipleAlmFeature", redefineIsAvailableFlag());
             redefineEdition(instrumentation, "org.sonar.server.newcodeperiod.ws.SetAction", redefineConstructorEditionProviderField(EditionProvider.Edition.DEVELOPER));
             redefineEdition(instrumentation, "org.sonar.server.newcodeperiod.ws.UnsetAction", redefineConstructorEditionProviderField(EditionProvider.Edition.DEVELOPER));
         }
@@ -73,7 +73,7 @@ public final class CommunityBranchAgent {
                     return byteCode;
                 }
 
-                LOGGER.debug("Transforming class " + targetClassName);
+                LOGGER.debug("Transforming class {}", targetClassName);
                 try {
                     ClassPool cp = ClassPool.getDefault();
                     CtClass cc = cp.get(targetClassName);
@@ -83,7 +83,7 @@ public final class CommunityBranchAgent {
                     byteCode = cc.toBytecode();
                     cc.detach();
                 } catch (NotFoundException | CannotCompileException | IOException e) {
-                    LOGGER.error(String.format("Could not transform class %s, will use default class definition", targetClassName), e);
+                    LOGGER.error("Could not transform class {}}, will use default class definition", targetClassName, e);
                 }
 
                 return byteCode;
@@ -102,9 +102,9 @@ public final class CommunityBranchAgent {
         };
     }
 
-    private static Redefiner redefineIsEnabledFlag() {
+    private static Redefiner redefineIsAvailableFlag() {
         return ctClass -> {
-            CtMethod ctMethod = ctClass.getDeclaredMethod("isEnabled");
+            CtMethod ctMethod = ctClass.getDeclaredMethod("isAvailable");
             ctMethod.setBody("return true;");
         };
     }

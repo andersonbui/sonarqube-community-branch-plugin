@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2020-2022 Michael Clarke
+ * Copyright (C) 2020-2024 Michael Clarke
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
@@ -26,11 +26,11 @@ import java.util.regex.Pattern;
 
 import org.apache.commons.lang.StringUtils;
 import org.sonar.api.config.Configuration;
+import org.sonar.core.ce.CeTaskCharacteristics;
 import org.sonar.core.config.PurgeConstants;
 import org.sonar.core.util.UuidFactory;
 import org.sonar.db.DbClient;
 import org.sonar.db.DbSession;
-import org.sonar.db.ce.CeTaskCharacteristicDto;
 import org.sonar.db.component.BranchDto;
 import org.sonar.db.component.BranchType;
 import org.sonar.db.component.ComponentDto;
@@ -59,20 +59,20 @@ public class CommunityBranchSupportDelegate implements BranchSupportDelegate {
 
     @Override
     public CommunityComponentKey createComponentKey(String projectKey, Map<String, String> characteristics) {
-        String branchTypeParam = StringUtils.trimToNull(characteristics.get(CeTaskCharacteristicDto.BRANCH_TYPE_KEY));
+        String branchTypeParam = StringUtils.trimToNull(characteristics.get(CeTaskCharacteristics.BRANCH_TYPE));
 
         if (null == branchTypeParam) {
-            String pullRequest = StringUtils.trimToNull(characteristics.get(CeTaskCharacteristicDto.PULL_REQUEST));
+            String pullRequest = StringUtils.trimToNull(characteristics.get(CeTaskCharacteristics.PULL_REQUEST));
             if (null == pullRequest) {
                 throw new IllegalArgumentException(String.format("One of '%s' or '%s' parameters must be specified",
-                                                                 CeTaskCharacteristicDto.BRANCH_TYPE_KEY,
-                                                                 CeTaskCharacteristicDto.PULL_REQUEST));
+                                                                 CeTaskCharacteristics.BRANCH_TYPE,
+                                                                 CeTaskCharacteristics.PULL_REQUEST));
             } else {
                 return new CommunityComponentKey(projectKey, null, pullRequest);
             }
         }
 
-        String branch = StringUtils.trimToNull(characteristics.get(CeTaskCharacteristicDto.BRANCH_KEY));
+        String branch = StringUtils.trimToNull(characteristics.get(CeTaskCharacteristics.BRANCH));
 
         try {
             BranchType.valueOf(branchTypeParam);
@@ -94,23 +94,22 @@ public class CommunityBranchSupportDelegate implements BranchSupportDelegate {
 
         ComponentDto componentDto = mainComponentDto.copy()
             .setUuid(branchUuid)
-            .setRootUuid(branchUuid)
             .setBranchUuid(branchUuid)
             .setUuidPath(ComponentDto.UUID_PATH_OF_ROOT)
-            .setModuleUuidPath(ComponentDto.UUID_PATH_SEPARATOR + branchUuid + ComponentDto.UUID_PATH_SEPARATOR)
-            .setMainBranchProjectUuid(mainComponentDto.uuid())
             .setCreatedAt(new Date(clock.millis()));
-        dbClient.componentDao().insert(dbSession, componentDto);
+        dbClient.componentDao().insert(dbSession, componentDto, false);
 
         BranchDto branchDto = new BranchDto()
-            .setProjectUuid(mainComponentDto.uuid())
+            .setProjectUuid(mainComponentBranchDto.getProjectUuid())
             .setUuid(branchUuid);
         componentKey.getPullRequestKey().ifPresent(pullRequestKey -> branchDto.setBranchType(BranchType.PULL_REQUEST)
             .setExcludeFromPurge(false)
-            .setKey(pullRequestKey));
+            .setKey(pullRequestKey)
+            .setIsMain(false));
         componentKey.getBranchName().ifPresent(branchName -> branchDto.setBranchType(BranchType.BRANCH)
-            .setExcludeFromPurge(isBranchExcludedFromPurge(projectConfigurationLoader.loadProjectConfiguration(dbSession, mainComponentDto), branchName))
-            .setKey(branchName));
+            .setExcludeFromPurge(isBranchExcludedFromPurge(projectConfigurationLoader.loadProjectConfiguration(dbSession, branchDto.getProjectUuid()), branchName))
+            .setKey(branchName)
+            .setIsMain(false));
         dbClient.branchDao().insert(dbSession, branchDto);
 
         return componentDto;
